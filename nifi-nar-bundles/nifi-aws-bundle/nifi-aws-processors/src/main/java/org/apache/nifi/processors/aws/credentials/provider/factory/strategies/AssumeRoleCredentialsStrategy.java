@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Map;
 
+import com.amazonaws.ClientConfiguration;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.ValidationContext;
 import org.apache.nifi.components.ValidationResult;
@@ -28,6 +29,9 @@ import static org.apache.nifi.processors.aws.credentials.provider.factory.Creden
 import static org.apache.nifi.processors.aws.credentials.provider.factory.CredentialPropertyDescriptors.MAX_SESSION_TIME;
 import static org.apache.nifi.processors.aws.credentials.provider.factory.CredentialPropertyDescriptors.ASSUME_ROLE_EXTERNAL_ID;
 import org.apache.nifi.processors.aws.credentials.provider.factory.CredentialsStrategy;
+
+// TODO: Need to bring in the client configuration to use with the AWSSecurityTokenService
+import org.apache.nifi.processors.aws.AbstractAWSProcessor;
 
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.STSAssumeRoleSessionCredentialsProvider;
@@ -106,7 +110,7 @@ public class AssumeRoleCredentialsStrategy extends AbstractCredentialsStrategy {
 
     @Override
     public AWSCredentialsProvider getDerivedCredentialsProvider(Map<PropertyDescriptor, String> properties,
-                                                                AWSCredentialsProvider primaryCredentialsProvider) {
+                                                                ClientConfiguration config) {
         final String assumeRoleArn = properties.get(ASSUME_ROLE_ARN);
         final String assumeRoleName = properties.get(ASSUME_ROLE_NAME);
         String rawMaxSessionTime = properties.get(MAX_SESSION_TIME);
@@ -114,9 +118,11 @@ public class AssumeRoleCredentialsStrategy extends AbstractCredentialsStrategy {
         final Integer maxSessionTime = Integer.parseInt(rawMaxSessionTime.trim());
         final String assumeRoleExternalId = properties.get(ASSUME_ROLE_EXTERNAL_ID);
 
+        // TODO: FIGURE OUT HOW TO PASS IN THE CLIENTCONFIGURATION CONFIG (from file from James Wing)
+        AWSSecurityTokenService securityTokenService = new AWSSecurityTokenServiceClient(config);
         STSAssumeRoleSessionCredentialsProvider.Builder builder = new STSAssumeRoleSessionCredentialsProvider
                 .Builder(assumeRoleArn, assumeRoleName)
-                .withLongLivedCredentialsProvider(primaryCredentialsProvider)
+                .withStsClient(securityTokenService)
                 .withRoleSessionDurationSeconds(maxSessionTime);
         if (assumeRoleExternalId != null && !assumeRoleExternalId.isEmpty()) {
             builder = builder.withExternalId(assumeRoleExternalId);
