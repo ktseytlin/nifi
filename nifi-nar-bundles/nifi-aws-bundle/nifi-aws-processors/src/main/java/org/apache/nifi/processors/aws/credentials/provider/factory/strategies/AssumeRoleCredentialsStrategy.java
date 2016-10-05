@@ -21,20 +21,17 @@ import java.util.Collection;
 import java.util.Map;
 
 import com.amazonaws.ClientConfiguration;
+import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
+import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClient;
 import org.apache.nifi.components.PropertyDescriptor;
 import org.apache.nifi.components.ValidationContext;
 import org.apache.nifi.components.ValidationResult;
-import static org.apache.nifi.processors.aws.credentials.provider.factory.CredentialPropertyDescriptors.ASSUME_ROLE_ARN;
-import static org.apache.nifi.processors.aws.credentials.provider.factory.CredentialPropertyDescriptors.ASSUME_ROLE_NAME;
-import static org.apache.nifi.processors.aws.credentials.provider.factory.CredentialPropertyDescriptors.MAX_SESSION_TIME;
-import static org.apache.nifi.processors.aws.credentials.provider.factory.CredentialPropertyDescriptors.ASSUME_ROLE_EXTERNAL_ID;
 import org.apache.nifi.processors.aws.credentials.provider.factory.CredentialsStrategy;
-
-// TODO: Need to bring in the client configuration to use with the AWSSecurityTokenService
-import org.apache.nifi.processors.aws.AbstractAWSProcessor;
 
 import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.STSAssumeRoleSessionCredentialsProvider;
+
+import static org.apache.nifi.processors.aws.credentials.provider.factory.CredentialPropertyDescriptors.*;
 
 
 /**
@@ -70,6 +67,16 @@ public class AssumeRoleCredentialsStrategy extends AbstractCredentialsStrategy {
         return false;
     }
 
+    public boolean proxyVariablesValidForAssumeRole(Map<PropertyDescriptor, String> properties){
+        final String assumeRoleProxyHost = properties.get(ASSUME_ROLE_PROXY_HOST);
+        final String assumeRoleProxyPort = properties.get(ASSUME_ROLE_PROXY_PORT);
+        if (assumeRoleProxyHost != null && !assumeRoleProxyHost.isEmpty()
+                && assumeRoleProxyPort != null && !assumeRoleProxyPort.isEmpty()) {
+            return true;
+        }
+        return false;
+    }
+
     @Override
     public Collection<ValidationResult> validate(final ValidationContext validationContext,
                                                  final CredentialsStrategy primaryStrategy) {
@@ -77,6 +84,8 @@ public class AssumeRoleCredentialsStrategy extends AbstractCredentialsStrategy {
         final boolean assumeRoleNameIsSet = validationContext.getProperty(ASSUME_ROLE_NAME).isSet();
         final Integer maxSessionTime = validationContext.getProperty(MAX_SESSION_TIME).asInteger();
         final boolean assumeRoleExternalIdIsSet = validationContext.getProperty(ASSUME_ROLE_EXTERNAL_ID).isSet();
+        final boolean assumeRoleProxyHostIsSet = validationContext.getProperty(ASSUME_ROLE_PROXY_HOST).isSet();
+        final boolean assumeRoleProxyPortIsSet = validationContext.getProperty(ASSUME_ROLE_PROXY_PORT).isSet();
 
         final Collection<ValidationResult> validationFailureResults  = new ArrayList<ValidationResult>();
 
@@ -100,6 +109,14 @@ public class AssumeRoleCredentialsStrategy extends AbstractCredentialsStrategy {
                     .build());
         }
 
+        // Both proxy host and proxy port are required if present
+        if (assumeRoleProxyHostIsSet ^ assumeRoleProxyPortIsSet){
+            validationFailureResults.add(new ValidationResult.Builder().input("Assume Role Proxy Host and Port")
+                    .valid(false)
+                    .explanation("Assume role with proxy requires both host and port for the proxy to be set")
+                    .build());
+        }
+
         return validationFailureResults;
     }
 
@@ -110,23 +127,39 @@ public class AssumeRoleCredentialsStrategy extends AbstractCredentialsStrategy {
 
     @Override
     public AWSCredentialsProvider getDerivedCredentialsProvider(Map<PropertyDescriptor, String> properties,
-                                                                ClientConfiguration config) {
+                                                                AWSCredentialsProvider primaryCredentialsProvider) {
         final String assumeRoleArn = properties.get(ASSUME_ROLE_ARN);
         final String assumeRoleName = properties.get(ASSUME_ROLE_NAME);
         String rawMaxSessionTime = properties.get(MAX_SESSION_TIME);
         rawMaxSessionTime = (rawMaxSessionTime != null) ? rawMaxSessionTime : MAX_SESSION_TIME.getDefaultValue();
         final Integer maxSessionTime = Integer.parseInt(rawMaxSessionTime.trim());
         final String assumeRoleExternalId = properties.get(ASSUME_ROLE_EXTERNAL_ID);
+        final String assumeRoleProxyHost = properties.get(ASSUME_ROLE_PROXY_HOST);
+        final Integer assumeRoleProxyPort = Integer.parseInt(properties.get(ASSUME_ROLE_PROXY_PORT));
 
-        // TODO: FIGURE OUT HOW TO PASS IN THE CLIENTCONFIGURATION CONFIG (from file from James Wing)
-        AWSSecurityTokenService securityTokenService = new AWSSecurityTokenServiceClient(config);
-        STSAssumeRoleSessionCredentialsProvider.Builder builder = new STSAssumeRoleSessionCredentialsProvider
-                .Builder(assumeRoleArn, assumeRoleName)
-                .withStsClient(securityTokenService)
-                .withRoleSessionDurationSeconds(maxSessionTime);
+        STSAssumeRoleSessionCredentialsProvider.Builder builder;
+
+        if (proxyVariablesValidForAssumeRole(properties)) {
+            ClientConfiguration config = new ClientConfiguration();
+            config.withProxyHost(assumeRoleProxyHost);
+            config.withProxyPort(assumeRoleProxyPort);
+            AWSSecurityTokenService securityTokenService = new AWSSecurityTokenServiceClient(config);
+            builder = new STSAssumeRoleSessionCredentialsProvider
+                    .Builder(assumeRoleArn, assumeRoleName)
+                    .withStsClient(securityTokenService)
+                    .withRoleSessionDurationSeconds(maxSessionTime);
+        }
+        else {
+            builder = new STSAssumeRoleSessionCredentialsProvider
+                    .Builder(assumeRoleArn, assumeRoleName)
+                    .withLongLivedCredentialsProvider(primaryCredentialsProvider)
+                    .withRoleSessionDurationSeconds(maxSessionTime);
+        }
+
         if (assumeRoleExternalId != null && !assumeRoleExternalId.isEmpty()) {
             builder = builder.withExternalId(assumeRoleExternalId);
         }
+
         final AWSCredentialsProvider credsProvider = builder.build();
 
         return credsProvider;
