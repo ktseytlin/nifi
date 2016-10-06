@@ -137,24 +137,6 @@ public class TestCredentialsProviderFactory {
     }
 
     @Test
-    public void testAssumeRoleCredentialsWithProxy() throws Throwable {
-        final TestRunner runner = TestRunners.newTestRunner(MockAWSProcessor.class);
-        runner.setProperty(CredentialPropertyDescriptors.CREDENTIALS_FILE, "src/test/resources/mock-aws-credentials.properties");
-        runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_ARN, "BogusArn");
-        runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_NAME, "BogusSession");
-        runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_PROXY_HOST, "proxy.company.com");
-        runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_PROXY_PORT, "8080");
-        runner.assertValid();
-
-        Map<PropertyDescriptor, String> properties = runner.getProcessContext().getProperties();
-        final CredentialsProviderFactory factory = new CredentialsProviderFactory();
-        final AWSCredentialsProvider credentialsProvider = factory.getCredentialsProvider(properties);
-        Assert.assertNotNull(credentialsProvider);
-        assertEquals("credentials provider should be equal", STSAssumeRoleSessionCredentialsProvider.class,
-                credentialsProvider.getClass());
-    }
-
-    @Test
     public void testAssumeRoleCredentialsMissingARN() throws Throwable {
         final TestRunner runner = TestRunners.newTestRunner(MockAWSProcessor.class);
         runner.setProperty(CredentialPropertyDescriptors.CREDENTIALS_FILE, "src/test/resources/mock-aws-credentials.properties");
@@ -177,30 +159,6 @@ public class TestCredentialsProviderFactory {
         final TestRunner runner = TestRunners.newTestRunner(MockAWSProcessor.class);
         runner.setProperty(CredentialPropertyDescriptors.CREDENTIALS_FILE, "src/test/resources/mock-aws-credentials.properties");
         runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_EXTERNAL_ID, "BogusExternalId");
-        runner.assertNotValid();
-    }
-
-    @Test
-    public void testAssumeRoleMissingProxyHost() throws Throwable {
-        final TestRunner runner = TestRunners.newTestRunner(MockAWSProcessor.class);
-        runner.setProperty(CredentialPropertyDescriptors.CREDENTIALS_FILE, "src/test/resources/mock-aws-credentials.properties");
-        runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_PROXY_PORT, "8080");
-        runner.assertNotValid();
-    }
-
-    @Test
-    public void testAssumeRoleMissingProxyPort() throws Throwable {
-        final TestRunner runner = TestRunners.newTestRunner(MockAWSProcessor.class);
-        runner.setProperty(CredentialPropertyDescriptors.CREDENTIALS_FILE, "src/test/resources/mock-aws-credentials.properties");
-        runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_PROXY_HOST, "proxy.company.com");
-        runner.assertNotValid();
-    }
-
-    public void testAssumeRoleInvalidProxyPort() throws Throwable {
-        final TestRunner runner = TestRunners.newTestRunner(MockAWSProcessor.class);
-        runner.setProperty(CredentialPropertyDescriptors.CREDENTIALS_FILE, "src/test/resources/mock-aws-credentials.properties");
-        runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_PROXY_HOST, "proxy.company.com");
-        runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_PROXY_PORT, "notIntPort");
         runner.assertNotValid();
     }
 
@@ -239,5 +197,49 @@ public class TestCredentialsProviderFactory {
         Assert.assertNotNull(credentialsProvider);
         assertEquals("credentials provider should be equal", ProfileCredentialsProvider.class,
                 credentialsProvider.getClass());
+    }
+
+    @Test
+    public void testAssumeRoleCredentialsWithProxy() throws Throwable {
+        final TestRunner runner = TestRunners.newTestRunner(MockAWSProcessor.class);
+        runner.setProperty(CredentialPropertyDescriptors.CREDENTIALS_FILE, "src/test/resources/mock-aws-credentials.properties");
+        runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_ARN, "BogusArn");
+        runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_NAME, "BogusSession");
+        runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_PROXY_HOST, "proxy.company.com");
+        runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_PROXY_PORT, "8080");
+        runner.assertValid();
+
+        Map<PropertyDescriptor, String> properties = runner.getProcessContext().getProperties();
+        final CredentialsProviderFactory factory = new CredentialsProviderFactory();
+        final AWSCredentialsProvider credentialsProvider = factory.getCredentialsProvider(properties);
+        Assert.assertNotNull(credentialsProvider);
+        assertEquals("credentials provider should be equal", STSAssumeRoleSessionCredentialsProvider.class,
+                credentialsProvider.getClass());
+    }
+
+
+    @Test
+    public void testAssumeRoleMissingProxyHost() throws Throwable {
+        final TestRunner runner = TestRunners.newTestRunner(MockAWSProcessor.class);
+        runner.setProperty(CredentialPropertyDescriptors.CREDENTIALS_FILE, "src/test/resources/mock-aws-credentials.properties");
+        runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_PROXY_PORT, "8080");
+        runner.assertNotValid();
+    }
+
+    @Test
+    public void testAssumeRoleMissingProxyPort() throws Throwable {
+        final TestRunner runner = TestRunners.newTestRunner(MockAWSProcessor.class);
+        runner.setProperty(CredentialPropertyDescriptors.CREDENTIALS_FILE, "src/test/resources/mock-aws-credentials.properties");
+        runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_PROXY_HOST, "proxy.company.com");
+        runner.assertNotValid();
+    }
+
+    @Test
+    public void testAssumeRoleInvalidProxyPort() throws Throwable {
+        final TestRunner runner = TestRunners.newTestRunner(MockAWSProcessor.class);
+        runner.setProperty(CredentialPropertyDescriptors.CREDENTIALS_FILE, "src/test/resources/mock-aws-credentials.properties");
+        runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_PROXY_HOST, "proxy.company.com");
+        runner.setProperty(CredentialPropertyDescriptors.ASSUME_ROLE_PROXY_PORT, "notIntPort");
+        runner.assertNotValid();
     }
 }

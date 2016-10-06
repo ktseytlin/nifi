@@ -30,7 +30,6 @@ import org.apache.nifi.components.ValidationResult;
 import org.apache.nifi.processor.ProcessContext;
 import org.apache.nifi.processor.ProcessSession;
 
-
 import com.amazonaws.auth.AWSCredentialsProvider;
 import org.apache.nifi.processors.aws.AbstractAWSCredentialsProviderProcessor;
 

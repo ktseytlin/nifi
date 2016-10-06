@@ -134,12 +134,11 @@ public class AssumeRoleCredentialsStrategy extends AbstractCredentialsStrategy {
         rawMaxSessionTime = (rawMaxSessionTime != null) ? rawMaxSessionTime : MAX_SESSION_TIME.getDefaultValue();
         final Integer maxSessionTime = Integer.parseInt(rawMaxSessionTime.trim());
         final String assumeRoleExternalId = properties.get(ASSUME_ROLE_EXTERNAL_ID);
-        final String assumeRoleProxyHost = properties.get(ASSUME_ROLE_PROXY_HOST);
-        final Integer assumeRoleProxyPort = Integer.parseInt(properties.get(ASSUME_ROLE_PROXY_PORT));
-
         STSAssumeRoleSessionCredentialsProvider.Builder builder;
 
         if (proxyVariablesValidForAssumeRole(properties)) {
+            final String assumeRoleProxyHost = properties.get(ASSUME_ROLE_PROXY_HOST);
+            final Integer assumeRoleProxyPort = Integer.parseInt(properties.get(ASSUME_ROLE_PROXY_PORT));
             ClientConfiguration config = new ClientConfiguration();
             config.withProxyHost(assumeRoleProxyHost);
             config.withProxyPort(assumeRoleProxyPort);
