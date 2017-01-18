@@ -333,6 +333,9 @@ public class FileAuthorizer extends AbstractPolicyBasedAuthorizer {
             addAccessPolicy(authorizations, ResourceType.ProcessGroup.getValue() + "/" + rootGroupId, adminUser.getIdentifier(), WRITE_CODE);
         }
 
+        // grant the user write to restricted components
+        addAccessPolicy(authorizations, ResourceType.RestrictedComponents.getValue(), adminUser.getIdentifier(), WRITE_CODE);
+
         // grant the user read/write access to the /tenants resource
         addAccessPolicy(authorizations, ResourceType.Tenant.getValue(), adminUser.getIdentifier(), READ_CODE);
         addAccessPolicy(authorizations, ResourceType.Tenant.getValue(), adminUser.getIdentifier(), WRITE_CODE);
@@ -444,8 +447,12 @@ public class FileAuthorizer extends AbstractPolicyBasedAuthorizer {
 
         // convert any access controls on ports to the appropriate policies
         for (PortDTO portDTO : ports) {
-            final boolean isInputPort = portDTO.getType() != null && portDTO.getType().equals("inputPort");
-            final Resource resource = ResourceFactory.getDataTransferResource(isInputPort, portDTO.getId(), portDTO.getName());
+            final Resource resource;
+            if (portDTO.getType() != null && portDTO.getType().equals("inputPort")) {
+                resource = ResourceFactory.getDataTransferResource(ResourceFactory.getComponentResource(ResourceType.InputPort, portDTO.getId(), portDTO.getName()));
+            } else {
+                resource = ResourceFactory.getDataTransferResource(ResourceFactory.getComponentResource(ResourceType.OutputPort, portDTO.getId(), portDTO.getName()));
+            }
 
             if (portDTO.getUserAccessControl() != null) {
                 for (String userAccessControl : portDTO.getUserAccessControl()) {

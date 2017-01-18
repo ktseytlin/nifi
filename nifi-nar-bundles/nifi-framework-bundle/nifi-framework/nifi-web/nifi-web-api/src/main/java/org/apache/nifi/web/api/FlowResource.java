@@ -218,12 +218,12 @@ public class FlowResource extends ApplicationResource {
                 .accessAttempt(true)
                 .action(RequestAction.READ)
                 .userContext(userContext)
+                .explanationSupplier(() -> "Unable to view the user interface.")
                 .build();
 
         final AuthorizationResult result = authorizer.authorize(request);
         if (!Result.Approved.equals(result.getResult())) {
-            final String message = StringUtils.isNotBlank(result.getExplanation()) ? result.getExplanation() : "Access is denied";
-            throw new AccessDeniedException(message);
+            throw new AccessDeniedException(result.getExplanation());
         }
     }
 
@@ -651,7 +651,7 @@ public class FlowResource extends ApplicationResource {
 
                     // ensure access to every component being scheduled
                     requestComponentsToSchedule.keySet().forEach(componentId -> {
-                        final Authorizable connectable = lookup.getConnectable(componentId);
+                        final Authorizable connectable = lookup.getLocalConnectable(componentId);
                         connectable.authorize(authorizer, RequestAction.WRITE, NiFiUserUtils.getNiFiUser());
                     });
                 },
@@ -1089,7 +1089,14 @@ public class FlowResource extends ApplicationResource {
         aboutDTO.setTimezone(new Date());
 
         // get the content viewer url
-        aboutDTO.setContentViewerUrl(getProperties().getProperty(NiFiProperties.CONTENT_VIEWER_URL));
+        final NiFiProperties properties = getProperties();
+        aboutDTO.setContentViewerUrl(properties.getProperty(NiFiProperties.CONTENT_VIEWER_URL));
+
+        // Get build info
+        aboutDTO.setBuildTag(properties.getProperty(NiFiProperties.BUILD_TAG));
+        aboutDTO.setBuildRevision(properties.getProperty(NiFiProperties.BUILD_REVISION));
+        aboutDTO.setBuildBranch(properties.getProperty(NiFiProperties.BUILD_BRANCH));
+        aboutDTO.setBuildTimestamp(properties.getBuildTimestamp());
 
         // create the response entity
         final AboutEntity entity = new AboutEntity();

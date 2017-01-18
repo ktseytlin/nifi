@@ -16,16 +16,15 @@
  */
 package org.apache.nifi.web.api.dto;
 
-import java.util.Date;
-import java.util.HashSet;
-import java.util.Set;
+import com.wordnik.swagger.annotations.ApiModelProperty;
+import org.apache.nifi.web.api.dto.util.DateTimeAdapter;
+import org.apache.nifi.web.api.dto.util.TimeAdapter;
 
 import javax.xml.bind.annotation.XmlType;
 import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter;
-
-import org.apache.nifi.web.api.dto.util.TimeAdapter;
-
-import com.wordnik.swagger.annotations.ApiModelProperty;
+import java.util.Date;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * The diagnostics of the system this NiFi is running on.
@@ -64,6 +63,8 @@ public class SystemDiagnosticsSnapshotDTO implements Cloneable {
     private Set<GarbageCollectionDTO> garbageCollection;
 
     private Date statsLastRefreshed;
+
+    private VersionInfoDTO versionInfo;
 
 
     @ApiModelProperty("Number of available processors if supported by the underlying system.")
@@ -220,7 +221,10 @@ public class SystemDiagnosticsSnapshotDTO implements Cloneable {
     }
 
     @XmlJavaTypeAdapter(TimeAdapter.class)
-    @ApiModelProperty("When the diagnostics were generated.")
+    @ApiModelProperty(
+            value = "When the diagnostics were generated.",
+            dataType = "string"
+    )
     public Date getStatsLastRefreshed() {
         return statsLastRefreshed;
     }
@@ -302,6 +306,14 @@ public class SystemDiagnosticsSnapshotDTO implements Cloneable {
         this.maxHeapBytes = maxHeapBytes;
     }
 
+    @ApiModelProperty("The nifi, os, java, and build version information")
+    public VersionInfoDTO getVersionInfo() {
+        return versionInfo;
+    }
+
+    public void setVersionInfo(VersionInfoDTO versionInfo) {
+        this.versionInfo = versionInfo;
+    }
 
     @Override
     public SystemDiagnosticsSnapshotDTO clone() {
@@ -332,17 +344,19 @@ public class SystemDiagnosticsSnapshotDTO implements Cloneable {
 
         other.setFlowFileRepositoryStorageUsage(getFlowFileRepositoryStorageUsage().clone());
 
-        final Set<StorageUsageDTO> contentRepoStorageUsage = new HashSet<>();
+        final Set<StorageUsageDTO> contentRepoStorageUsage = new LinkedHashSet<>();
         other.setContentRepositoryStorageUsage(contentRepoStorageUsage);
         for (final StorageUsageDTO usage : getContentRepositoryStorageUsage()) {
             contentRepoStorageUsage.add(usage.clone());
         }
 
-        final Set<GarbageCollectionDTO> gcUsage = new HashSet<>();
+        final Set<GarbageCollectionDTO> gcUsage = new LinkedHashSet<>();
         other.setGarbageCollection(gcUsage);
         for (final GarbageCollectionDTO gcDto : getGarbageCollection()) {
             gcUsage.add(gcDto.clone());
         }
+
+        other.setVersionInfo(getVersionInfo().clone());
 
         return other;
     }
@@ -543,6 +557,131 @@ public class SystemDiagnosticsSnapshotDTO implements Cloneable {
             other.setCollectionCount(getCollectionCount());
             other.setCollectionTime(getCollectionTime());
             other.setCollectionMillis(getCollectionMillis());
+            return other;
+        }
+    }
+
+    /**
+     * Details for version information.
+     */
+    @XmlType(name = "versionInfo")
+    public static class VersionInfoDTO implements Cloneable {
+
+        private String nifiVersion;
+        private String javaVendor;
+        private String javaVersion;
+        private String osName;
+        private String osVersion;
+        private String osArchitecture;
+        private String buildTag;
+        private String buildRevision;
+        private String buildBranch;
+        private Date buildTimestamp;
+
+        @ApiModelProperty("The version of this NiFi.")
+        public String getNiFiVersion() {
+            return nifiVersion;
+        }
+
+        public void setNiFiVersion(String nifiVersion) {
+            this.nifiVersion = nifiVersion;
+        }
+
+        @ApiModelProperty("Java JVM vendor")
+        public String getJavaVendor() {
+            return javaVendor;
+        }
+
+        public void setJavaVendor(String javaVendor) {
+            this.javaVendor = javaVendor;
+        }
+
+        @ApiModelProperty("Java version")
+        public String getJavaVersion() {
+            return javaVersion;
+        }
+
+        public void setJavaVersion(String javaVersion) {
+            this.javaVersion = javaVersion;
+        }
+
+        @ApiModelProperty("Host operating system name")
+        public String getOsName() {
+            return osName;
+        }
+
+        public void setOsName(String osName) {
+            this.osName = osName;
+        }
+
+        @ApiModelProperty("Host operating system version")
+        public String getOsVersion() {
+            return osVersion;
+        }
+
+        public void setOsVersion(String osVersion) {
+            this.osVersion = osVersion;
+        }
+
+        @ApiModelProperty("Host operating system architecture")
+        public String getOsArchitecture() {
+            return osArchitecture;
+        }
+
+        public void setOsArchitecture(String osArchitecture) {
+            this.osArchitecture = osArchitecture;
+        }
+
+        @ApiModelProperty("Build tag")
+        public String getBuildTag() {
+            return buildTag;
+        }
+
+        public void setBuildTag(String buildTag) {
+            this.buildTag = buildTag;
+        }
+
+        @ApiModelProperty("Build revision or commit hash")
+        public String getBuildRevision() {
+            return buildRevision;
+        }
+
+        public void setBuildRevision(String buildRevision) {
+            this.buildRevision = buildRevision;
+        }
+
+        @ApiModelProperty("Build branch")
+        public String getBuildBranch() {
+            return buildBranch;
+        }
+
+        public void setBuildBranch(String buildBranch) {
+            this.buildBranch = buildBranch;
+        }
+
+        @XmlJavaTypeAdapter(DateTimeAdapter.class)
+        @ApiModelProperty("Build timestamp")
+        public Date getBuildTimestamp() {
+            return buildTimestamp;
+        }
+
+        public void setBuildTimestamp(Date buildTimestamp) {
+            this.buildTimestamp = buildTimestamp;
+        }
+
+        @Override
+        public VersionInfoDTO clone() {
+            final VersionInfoDTO other = new VersionInfoDTO();
+            other.setNiFiVersion(getNiFiVersion());
+            other.setJavaVendor(getJavaVendor());
+            other.setJavaVersion(getJavaVersion());
+            other.setOsName(getOsName());
+            other.setOsVersion(getOsVersion());
+            other.setOsArchitecture(getOsArchitecture());
+            other.setBuildTag(getBuildTag());
+            other.setBuildTimestamp(getBuildTimestamp());
+            other.setBuildBranch(getBuildBranch());
+            other.setBuildRevision(getBuildRevision());
             return other;
         }
     }

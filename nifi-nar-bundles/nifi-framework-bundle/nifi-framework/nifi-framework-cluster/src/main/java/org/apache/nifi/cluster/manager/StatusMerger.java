@@ -307,6 +307,8 @@ public class StatusMerger {
 
         merge(target.getAggregateSnapshot(), targetReadablePermission, toMerge.getAggregateSnapshot(), toMergeReadablePermission);
 
+        target.setTransmitting(Boolean.TRUE.equals(target.isTransmitting()) || Boolean.TRUE.equals(toMerge.isTransmitting()));
+
         if (target.getNodeSnapshots() != null) {
             final NodePortStatusSnapshotDTO nodeSnapshot = new NodePortStatusSnapshotDTO();
             nodeSnapshot.setStatusSnapshot(toMerge.getAggregateSnapshot());
@@ -450,6 +452,18 @@ public class StatusMerger {
         target.setBytesOut(target.getBytesOut() + toMerge.getBytesOut());
         target.setFlowFilesQueued(target.getFlowFilesQueued() + toMerge.getFlowFilesQueued());
         target.setBytesQueued(target.getBytesQueued() + toMerge.getBytesQueued());
+
+        if (target.getPercentUseBytes() == null) {
+            target.setPercentUseBytes(toMerge.getPercentUseBytes());
+        } else if (toMerge.getPercentUseBytes() != null) {
+            target.setPercentUseBytes(Math.max(target.getPercentUseBytes(), toMerge.getPercentUseBytes()));
+        }
+        if (target.getPercentUseCount() == null) {
+            target.setPercentUseCount(toMerge.getPercentUseCount());
+        } else if (toMerge.getPercentUseCount() != null) {
+            target.setPercentUseCount(Math.max(target.getPercentUseCount(), toMerge.getPercentUseCount()));
+        }
+
         updatePrettyPrintedFields(target);
     }
 

@@ -112,6 +112,7 @@ nf.Canvas = (function () {
     var MIN_SCALE_TO_RENDER = 0.6;
 
     var polling = false;
+    var allowPageRefresh = false;
     var groupId = 'root';
     var groupName = null;
     var permissions = null;
@@ -197,7 +198,7 @@ nf.Canvas = (function () {
 
         // create arrow definitions for the various line types
         defs.selectAll('marker')
-            .data(['normal', 'ghost', 'unauthorized'])
+            .data(['normal', 'ghost', 'unauthorized', 'full'])
             .enter().append('marker')
             .attr({
                 'id': function (d) {
@@ -214,6 +215,8 @@ nf.Canvas = (function () {
                         return '#aaaaaa';
                     } else if (d === 'unauthorized') {
                         return '#ba554a';
+                    } else if (d === 'full') {
+                        return '#ba554a';
                     } else {
                         return '#000000';
                     }
@@ -223,7 +226,7 @@ nf.Canvas = (function () {
             .attr('d', 'M2,3 L0,6 L6,3 L0,0 z');
 
         // filter for drop shadow
-        var filter = defs.append('filter')
+        var componentDropShadowFilter = defs.append('filter')
             .attr({
                 'id': 'component-drop-shadow',
                 'height': '140%',
@@ -231,7 +234,7 @@ nf.Canvas = (function () {
             });
 
         // blur
-        filter.append('feGaussianBlur')
+        componentDropShadowFilter.append('feGaussianBlur')
             .attr({
                 'in': 'SourceAlpha',
                 'stdDeviation': 3,
@@ -239,7 +242,7 @@ nf.Canvas = (function () {
             });
 
         // offset
-        filter.append('feOffset')
+        componentDropShadowFilter.append('feOffset')
             .attr({
                 'in': 'blur',
                 'dx': 0,
@@ -248,7 +251,7 @@ nf.Canvas = (function () {
             });
 
         // color/opacity
-        filter.append('feFlood')
+        componentDropShadowFilter.append('feFlood')
             .attr({
                 'flood-color': '#000000',
                 'flood-opacity': 0.4,
@@ -256,7 +259,7 @@ nf.Canvas = (function () {
             });
 
         // combine
-        filter.append('feComposite')
+        componentDropShadowFilter.append('feComposite')
             .attr({
                 'in': 'offsetColor',
                 'in2': 'offsetBlur',
@@ -265,33 +268,60 @@ nf.Canvas = (function () {
             });
 
         // stack the effect under the source graph
-        var feMerge = filter.append('feMerge');
-        feMerge.append('feMergeNode')
+        var componentDropShadowFeMerge = componentDropShadowFilter.append('feMerge');
+        componentDropShadowFeMerge.append('feMergeNode')
             .attr('in', 'offsetColorBlur');
-        feMerge.append('feMergeNode')
+        componentDropShadowFeMerge.append('feMergeNode')
             .attr('in', 'SourceGraphic');
 
-        // define the gradient for the expiration icon
-        var expirationBackground = defs.append('linearGradient')
+        // filter for drop shadow
+        var connectionFullDropShadowFilter = defs.append('filter')
             .attr({
-                'id': 'expiration',
-                'x1': '0%',
-                'y1': '0%',
-                'x2': '0%',
-                'y2': '100%'
+                'id': 'connection-full-drop-shadow',
+                'height': '140%',
+                'y': '-20%'
             });
 
-        expirationBackground.append('stop')
+        // blur
+        connectionFullDropShadowFilter.append('feGaussianBlur')
             .attr({
-                'offset': '0%',
-                'stop-color': '#aeafb1'
+                'in': 'SourceAlpha',
+                'stdDeviation': 3,
+                'result': 'blur'
             });
 
-        expirationBackground.append('stop')
+        // offset
+        connectionFullDropShadowFilter.append('feOffset')
             .attr({
-                'offset': '100%',
-                'stop-color': '#87888a'
+                'in': 'blur',
+                'dx': 0,
+                'dy': 1,
+                'result': 'offsetBlur'
             });
+
+        // color/opacity
+        connectionFullDropShadowFilter.append('feFlood')
+            .attr({
+                'flood-color': '#ba554a',
+                'flood-opacity': 1,
+                'result': 'offsetColor'
+            });
+
+        // combine
+        connectionFullDropShadowFilter.append('feComposite')
+            .attr({
+                'in': 'offsetColor',
+                'in2': 'offsetBlur',
+                'operator': 'in',
+                'result': 'offsetColorBlur'
+            });
+
+        // stack the effect under the source graph
+        var connectionFullFeMerge = connectionFullDropShadowFilter.append('feMerge');
+        connectionFullFeMerge.append('feMergeNode')
+            .attr('in', 'offsetColorBlur');
+        connectionFullFeMerge.append('feMergeNode')
+            .attr('in', 'SourceGraphic');
 
         // create the canvas element
         canvas = svg.append('g')
@@ -476,6 +506,21 @@ nf.Canvas = (function () {
         };
         updateFlowStatusContainerSize();
 
+        // listen for events to go to components
+        $('body').on('GoTo:Component', function (e, item) {
+            nf.CanvasUtils.showComponent(item.parentGroupId, item.id);
+        });
+
+        // listen for events to go to process groups
+        $('body').on('GoTo:ProcessGroup', function (e, item) {
+            nf.CanvasUtils.enterGroup(item.id).done(function () {
+                nf.CanvasUtils.getSelection().classed('selected', false);
+
+                // inform Angular app that values have changed
+                nf.ng.Bridge.digest();
+            });
+        });
+
         // listen for browser resize events to reset the graph size
         $(window).on('resize', function (e) {
             if (e.target === window) {
@@ -543,6 +588,10 @@ nf.Canvas = (function () {
             var isCtrl = evt.ctrlKey || evt.metaKey;
             if (isCtrl) {
                 if (evt.keyCode === 82) {
+                    if (allowPageRefresh === true) {
+                        location.reload();
+                        return;
+                    }
                     // ctrl-r
                     nf.Actions.reload();
 
@@ -644,7 +693,7 @@ nf.Canvas = (function () {
 
             // update the access policies
             permissions = flowResponse.permissions;
-            
+
             // update the breadcrumbs
             nf.ng.Bridge.injector.get('breadcrumbsCtrl').resetBreadcrumbs();
             nf.ng.Bridge.injector.get('breadcrumbsCtrl').generateBreadcrumbs(breadcrumb);
@@ -725,6 +774,13 @@ nf.Canvas = (function () {
         stopPolling: function () {
             // set polling flag
             polling = false;
+        },
+
+        /**
+         * Disable the canvas refresh hot key.
+         */
+        disableRefreshHotKey: function () {
+            allowPageRefresh = true;
         },
 
         /**
@@ -841,7 +897,7 @@ nf.Canvas = (function () {
                     });
                 });
             }).promise();
-            
+
             userXhr.done(function () {
                 // load the client id
                 var clientXhr = nf.Client.init();

@@ -13,7 +13,8 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */package org.apache.nifi.processor.util.put.sender;
+ */
+package org.apache.nifi.processor.util.put.sender;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.nifi.logging.ComponentLog;
@@ -50,7 +51,7 @@ public class SocketChannelSender extends ChannelSender {
                 if (actualSendBufSize < maxSendBufferSize) {
                     logger.warn("Attempted to set Socket Send Buffer Size to " + maxSendBufferSize
                             + " bytes but could only set to " + actualSendBufSize + "bytes. You may want to "
-                            + "consider changing the Operating System's maximum receive buffer");
+                            + "consider changing the Operating System's maximum send buffer");
                 }
             }
         }

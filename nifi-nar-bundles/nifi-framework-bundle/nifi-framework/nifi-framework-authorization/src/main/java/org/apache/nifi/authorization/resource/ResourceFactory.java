@@ -32,6 +32,11 @@ public final class ResourceFactory {
         public String getName() {
             return "Controller";
         }
+
+        @Override
+        public String getSafeDescription() {
+            return "the controller";
+        }
     };
 
     private final static Resource FLOW_RESOURCE = new Resource() {
@@ -44,6 +49,11 @@ public final class ResourceFactory {
         public String getName() {
             return "NiFi Flow";
         }
+
+        @Override
+        public String getSafeDescription() {
+            return "the user interface";
+        }
     };
 
     private final static Resource POLICY_RESOURCE = new Resource() {
@@ -54,7 +64,12 @@ public final class ResourceFactory {
 
         @Override
         public String getName() {
-            return "Policy";
+            return "Policies for ";
+        }
+
+        @Override
+        public String getSafeDescription() {
+            return "the policies for ";
         }
     };
 
@@ -68,6 +83,11 @@ public final class ResourceFactory {
         public String getName() {
             return "Counters";
         }
+
+        @Override
+        public String getSafeDescription() {
+            return "counters";
+        }
     };
 
     private final static Resource PROVENANCE_RESOURCE = new Resource() {
@@ -80,6 +100,11 @@ public final class ResourceFactory {
         public String getName() {
             return "Provenance";
         }
+
+        @Override
+        public String getSafeDescription() {
+            return "provenance";
+        }
     };
 
     private final static Resource DATA_RESOURCE = new Resource() {
@@ -90,7 +115,12 @@ public final class ResourceFactory {
 
         @Override
         public String getName() {
-            return "Data";
+            return "Data for ";
+        }
+
+        @Override
+        public String getSafeDescription() {
+            return "the data for ";
         }
     };
 
@@ -104,6 +134,11 @@ public final class ResourceFactory {
         public String getName() {
             return "Proxy User Requests";
         }
+
+        @Override
+        public String getSafeDescription() {
+            return "proxy requests on behalf of users";
+        }
     };
 
     private final static Resource RESOURCE_RESOURCE = new Resource() {
@@ -115,6 +150,11 @@ public final class ResourceFactory {
         @Override
         public String getName() {
             return "NiFi Resources";
+        }
+
+        @Override
+        public String getSafeDescription() {
+            return "resources";
         }
     };
 
@@ -128,6 +168,11 @@ public final class ResourceFactory {
         public String getName() {
             return "Site to Site";
         }
+
+        @Override
+        public String getSafeDescription() {
+            return "site-to-site details";
+        }
     };
 
     private final static Resource SYSTEM_RESOURCE = new Resource() {
@@ -139,6 +184,28 @@ public final class ResourceFactory {
         @Override
         public String getName() {
             return "System";
+        }
+
+        @Override
+        public String getSafeDescription() {
+            return "system diagnostics";
+        }
+    };
+
+    private final static Resource RESTRICTED_COMPONENTS_RESOURCE = new Resource() {
+        @Override
+        public String getIdentifier() {
+            return ResourceType.RestrictedComponents.getValue();
+        }
+
+        @Override
+        public String getName() {
+            return "Restricted Components";
+        }
+
+        @Override
+        public String getSafeDescription() {
+            return "restricted components";
         }
     };
 
@@ -152,6 +219,11 @@ public final class ResourceFactory {
         public String getName() {
             return "Tenant";
         }
+
+        @Override
+        public String getSafeDescription() {
+            return "users/user groups";
+        }
     };
 
     private final static Resource POLICIES_RESOURCE = new Resource() {
@@ -164,6 +236,11 @@ public final class ResourceFactory {
         @Override
         public String getName() {
             return "Access Policies";
+        }
+
+        @Override
+        public String getSafeDescription() {
+            return "policies";
         }
     };
 
@@ -242,36 +319,21 @@ public final class ResourceFactory {
     }
 
     /**
+     * Gets the Resource for accessing restricted components.
+     *
+     * @return The restricted components resource
+     */
+    public static Resource getRestrictedComponentsResource() {
+        return RESTRICTED_COMPONENTS_RESOURCE;
+    }
+
+    /**
      * Gets the Resource for accessing Tenants which includes creating, modifying, and deleting Users and UserGroups.
      *
      * @return The Resource for accessing Tenants
      */
     public static Resource getTenantResource() {
         return TENANT_RESOURCE;
-    }
-
-    /**
-     * Gets a Resource for performing transferring data to a port.
-     *
-     * @param isInputPort   Whether this port is an input port or an output port
-     * @param identifier    The identifier of the component being accessed
-     * @param name          The name of the component being accessed
-     * @return              The resource
-     */
-    public static Resource getDataTransferResource(final boolean isInputPort, final String identifier, final String name) {
-        Objects.requireNonNull(identifier, "The component identifier must be specified.");
-
-        return new Resource() {
-            @Override
-            public String getIdentifier() {
-                return String.format("%s/%s/%s", ResourceType.DataTransfer.getValue(), isInputPort ? "input-ports" : "output-ports", identifier);
-            }
-
-            @Override
-            public String getName() {
-                return name;
-            }
-        };
     }
 
     /**
@@ -292,6 +354,11 @@ public final class ResourceFactory {
             @Override
             public String getName() {
                 return "Transfer data to " + resource.getName();
+            }
+
+            @Override
+            public String getSafeDescription() {
+                return "data transfers to " + resource.getSafeDescription();
             }
         };
     }
@@ -321,7 +388,12 @@ public final class ResourceFactory {
 
             @Override
             public String getName() {
-                return "Policies for " + resource.getName();
+                return POLICY_RESOURCE.getName() + resource.getName();
+            }
+
+            @Override
+            public String getSafeDescription() {
+                return POLICY_RESOURCE.getSafeDescription() + resource.getSafeDescription();
             }
         };
     }
@@ -348,6 +420,47 @@ public final class ResourceFactory {
             public String getName() {
                 return name;
             }
+
+            @Override
+            public String getSafeDescription() {
+                final String componentType;
+                switch (resourceType) {
+                    case ControllerService:
+                        componentType = "Controller Service";
+                        break;
+                    case ProcessGroup:
+                        componentType = "Process Group";
+                        break;
+                    case Template:
+                        componentType = "Template";
+                        break;
+                    case Funnel:
+                        componentType = "Funnel";
+                        break;
+                    case InputPort:
+                        componentType = "Input Port";
+                        break;
+                    case OutputPort:
+                        componentType = "Output Port";
+                        break;
+                    case Processor:
+                        componentType = "Processor";
+                        break;
+                    case RemoteProcessGroup:
+                        componentType = "Remote Process Group";
+                        break;
+                    case ReportingTask:
+                        componentType = "Reporting Task";
+                        break;
+                    case Label:
+                        componentType = "Label";
+                        break;
+                    default:
+                        componentType = "Component";
+                        break;
+                }
+                return componentType + " with ID " + identifier;
+            }
         };
     }
 
@@ -366,7 +479,12 @@ public final class ResourceFactory {
 
             @Override
             public String getName() {
-                return "Data for " + resource.getName();
+                return DATA_RESOURCE.getName() + resource.getName();
+            }
+
+            @Override
+            public String getSafeDescription() {
+                return DATA_RESOURCE.getSafeDescription() + resource.getSafeDescription();
             }
         };
     }

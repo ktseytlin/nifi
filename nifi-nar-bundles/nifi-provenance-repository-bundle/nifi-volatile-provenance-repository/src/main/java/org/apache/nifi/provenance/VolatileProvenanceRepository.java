@@ -256,7 +256,11 @@ public class VolatileProvenanceRepository implements ProvenanceRepository {
 
         final Authorizable eventAuthorizable;
         try {
-            eventAuthorizable = resourceFactory.createDataAuthorizable(event.getComponentId());
+            if (event.isRemotePortType()) {
+                eventAuthorizable = resourceFactory.createRemoteDataAuthorizable(event.getComponentId());
+            } else {
+                eventAuthorizable = resourceFactory.createLocalDataAuthorizable(event.getComponentId());
+            }
         } catch (final ResourceNotFoundException rnfe) {
             return false;
         }
@@ -270,7 +274,12 @@ public class VolatileProvenanceRepository implements ProvenanceRepository {
             return;
         }
 
-        final Authorizable eventAuthorizable = resourceFactory.createDataAuthorizable(event.getComponentId());
+        final Authorizable eventAuthorizable;
+        if (event.isRemotePortType()) {
+            eventAuthorizable = resourceFactory.createRemoteDataAuthorizable(event.getComponentId());
+        } else {
+            eventAuthorizable = resourceFactory.createLocalDataAuthorizable(event.getComponentId());
+        }
         eventAuthorizable.authorize(authorizer, RequestAction.READ, user, event.getAttributes());
     }
 
@@ -451,14 +460,14 @@ public class VolatileProvenanceRepository implements ProvenanceRepository {
         }
 
         if (user == null) {
-            throw new AccessDeniedException("Cannot retrieve Provenance Query Submission because no user id was provided");
+            throw new AccessDeniedException("Cannot retrieve Provenance Query Submission because no user id was provided in the provenance request.");
         }
 
         if (userId == null || userId.equals(user.getIdentity())) {
             return submission;
         }
 
-        throw new AccessDeniedException("Cannot retrieve Provenance Query Submission because " + user.getIdentity() + " is not the user who submitted the request");
+        throw new AccessDeniedException("Cannot retrieve Provenance Query Submission because " + user.getIdentity() + " is not the user who submitted the request.");
     }
 
     public Lineage computeLineage(final String flowFileUUID, final NiFiUser user) throws IOException {
@@ -511,14 +520,14 @@ public class VolatileProvenanceRepository implements ProvenanceRepository {
         }
 
         if (user == null) {
-            throw new AccessDeniedException("Cannot retrieve Provenance Query Submission because no user id was provided");
+            throw new AccessDeniedException("Cannot retrieve Provenance Lineage Submission because no user id was provided in the lineage request.");
         }
 
         if (userId == null || userId.equals(user.getIdentity())) {
             return submission;
         }
 
-        throw new AccessDeniedException("Cannot retrieve Provenance Query Submission because " + user.getIdentity() + " is not the user who submitted the request");
+        throw new AccessDeniedException("Cannot retrieve Provenance Lineage Submission because " + user.getIdentity() + " is not the user who submitted the request.");
     }
 
     public Lineage expandSpawnEventParents(String identifier) throws IOException {

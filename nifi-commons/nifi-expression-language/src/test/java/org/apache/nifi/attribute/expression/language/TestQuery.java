@@ -16,11 +16,15 @@
  */
 package org.apache.nifi.attribute.expression.language;
 
+import static java.lang.Double.NEGATIVE_INFINITY;
+import static java.lang.Double.NaN;
+import static java.lang.Double.POSITIVE_INFINITY;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.Assert.fail;
 
 import java.io.BufferedInputStream;
 import java.io.IOException;
@@ -37,6 +41,7 @@ import java.util.Locale;
 import java.util.Map;
 
 import org.apache.nifi.attribute.expression.language.Query.Range;
+import org.apache.nifi.attribute.expression.language.evaluation.NumberQueryResult;
 import org.apache.nifi.attribute.expression.language.evaluation.QueryResult;
 import org.apache.nifi.attribute.expression.language.exception.AttributeExpressionLanguageException;
 import org.apache.nifi.attribute.expression.language.exception.AttributeExpressionLanguageParsingException;
@@ -67,6 +72,7 @@ public class TestQuery {
         assertValid("${hostname()}");
         assertValid("${literal(3)}");
         assertValid("${random()}");
+        assertValid("${getStateValue('the_count')}");
         // left here because it's convenient for looking at the output
         //System.out.println(Query.compile("").evaluate(null));
     }
@@ -187,14 +193,13 @@ public class TestQuery {
     }
 
     @Test
-    @Ignore("Depends on TimeZone")
     public void testDateToNumber() {
-        final Query query = Query.compile("${dateTime:toDate('yyyy/MM/dd HH:mm:ss.SSS'):toNumber()}");
+        final Query query = Query.compile("${dateTime:toDate('yyyy/MM/dd HH:mm:ss.SSS', 'America/New_York'):toNumber()}");
         final Map<String, String> attributes = new HashMap<>();
         attributes.put("dateTime", "2013/11/18 10:22:27.678");
 
         final QueryResult<?> result = query.evaluate(attributes);
-        assertEquals(ResultType.NUMBER, result.getResultType());
+        assertEquals(ResultType.WHOLE_NUMBER, result.getResultType());
         assertEquals(1384788147678L, result.getValue());
     }
 
@@ -491,7 +496,7 @@ public class TestQuery {
         assertEquals(3, types.size());
         assertEquals(ResultType.BOOLEAN, types.get(0));
         assertEquals(ResultType.STRING, types.get(1));
-        assertEquals(ResultType.NUMBER, types.get(2));
+        assertEquals(ResultType.WHOLE_NUMBER, types.get(2));
     }
 
     @Test
@@ -768,7 +773,7 @@ public class TestQuery {
     }
 
     @Test
-    public void testMathOperations() {
+    public void testMathWholeNumberOperations() {
         final Map<String, String> attributes = new HashMap<>();
         attributes.put("one", "1");
         attributes.put("two", "2");
@@ -777,7 +782,104 @@ public class TestQuery {
         attributes.put("five", "5");
         attributes.put("hundred", "100");
 
-        verifyEquals("${hundred:toNumber():multiply(2):divide(3):plus(1):mod(5)}", attributes, 2L);
+        verifyEquals("${hundred:toNumber():multiply(${two}):divide(${three}):plus(${one}):mod(${five})}", attributes, 2L);
+    }
+
+    @Test
+    public void testMathDecimalOperations() {
+        final Map<String, String> attributes = new HashMap<>();
+        attributes.put("first", "1.5");
+        attributes.put("second", "12.3");
+        attributes.put("third", "3");
+        attributes.put("fourth", "4.201");
+        attributes.put("fifth", "5.1");
+        attributes.put("hundred", "100");
+
+        // The expected resulted is calculated instead of a set number due to the inaccuracy of double arithmetic
+        verifyEquals("${hundred:toNumber():multiply(${second}):divide(${third}):plus(${first}):mod(${fifth})}", attributes, (((100 * 12.3) / 3) + 1.5) %5.1);
+    }
+
+    @Test
+    public void testMathResultInterpretation() {
+        final Map<String, String> attributes = new HashMap<>();
+        attributes.put("ten", "10.1");
+        attributes.put("two", "2.2");
+
+        // The expected resulted is calculated instead of a set number due to the inaccuracy of double arithmetic
+        verifyEquals("${ten:divide(${two:plus(3)}):toNumber()}", attributes, (Double.valueOf(10.1 / (2.2 + 3)).longValue()));
+
+        // The expected resulted is calculated instead of a set number due to the inaccuracy of double arithmetic
+        verifyEquals("${ten:divide(${two:plus(3)}):toDecimal()}", attributes, (10.1 / (2.2 + 3)));
+
+        // The expected resulted is calculated instead of a set number due to the inaccuracy of double arithmetic
+        verifyEquals("${ten:divide(${two:plus(3.1)}):toDecimal()}", attributes, (10.1 / (2.2 + 3.1)));
+
+        verifyEquals("${ten:divide(${two:plus(3)}):toDate():format(\"SSS\")}", attributes, "001");
+    }
+
+    @Test
+    public void testMathFunction() {
+        final Map<String, String> attributes = new HashMap<>();
+        attributes.put("one", "1");
+        attributes.put("two", "2");
+        attributes.put("oneDecimal", "1.5");
+        attributes.put("twoDecimal", "2.3");
+        attributes.put("negative", "-64");
+        attributes.put("negativeDecimal", "-64.1");
+
+        // Test that errors relating to not finding methods are properly handled
+        try {
+            verifyEquals("${math('rand'):toNumber()}", attributes, 0L);
+            fail();
+        } catch (AttributeExpressionLanguageException expected) {
+            assertEquals("Cannot evaluate 'math' function because no subjectless method was found with the name:'rand'", expected.getMessage());
+        }
+        try {
+            verifyEquals("${negativeDecimal:math('absolute')}", attributes, 0L);
+            fail();
+        } catch (AttributeExpressionLanguageException expected) {
+            assertEquals("Cannot evaluate 'math' function because no method was found matching the passed parameters: name:'absolute', one argument of type: 'double'", expected.getMessage());
+        }
+        try {
+            verifyEquals("${oneDecimal:math('power', ${two:toDecimal()})}", attributes, 0L);
+            fail();
+        } catch (AttributeExpressionLanguageException expected) {
+            assertEquals("Cannot evaluate 'math' function because no method was found matching the passed parameters: name:'power', " +
+                    "first argument type: 'double', second argument type:  'double'", expected.getMessage());
+        }
+        try {
+            verifyEquals("${oneDecimal:math('power', ${two})}", attributes, 0L);
+            fail();
+        } catch (AttributeExpressionLanguageException expected) {
+            assertEquals("Cannot evaluate 'math' function because no method was found matching the passed parameters: name:'power', " +
+                    "first argument type: 'double', second argument type:  'long'", expected.getMessage());
+        }
+
+        // Can only verify that it runs. ToNumber() will verify that it produced a number greater than or equal to 0.0 and less than 1.0
+        verifyEquals("${math('random'):toNumber()}", attributes, 0L);
+
+        verifyEquals("${negative:math('abs')}", attributes, 64L);
+        verifyEquals("${negativeDecimal:math('abs')}", attributes, 64.1D);
+
+        verifyEquals("${negative:math('max', ${two})}", attributes, 2L);
+        verifyEquals("${negativeDecimal:math('max', ${twoDecimal})}", attributes, 2.3D);
+
+        verifyEquals("${oneDecimal:math('pow', ${two:toDecimal()})}", attributes, Math.pow(1.5,2));
+        verifyEquals("${oneDecimal:math('scalb', ${two})}", attributes, Math.scalb(1.5,2));
+
+        verifyEquals("${negative:math('abs'):toDecimal():math('cbrt'):math('max', ${two:toDecimal():math('pow',${oneDecimal}):mod(${two})})}", attributes,
+                Math.max(Math.cbrt(Math.abs(-64)), Math.pow(2,1.5)%2));
+    }
+
+    @Test
+    public void testMathLiteralOperations() {
+        final Map<String, String> attributes = new HashMap<>();
+        attributes.put("ten", "10.1");
+        attributes.put("two", "2.2");
+
+        // The expected resulted is calculated instead of a set number due to the inaccuracy of double arithmetic
+        verifyEquals("${literal(5):toNumber():multiply(${two:plus(1)})}", attributes, 5*3.2);
+        verifyEquals("${literal(5.5E-1):toDecimal():plus(${literal(.5E1)}):multiply(${two:plus(1)})}", attributes, (0.55+5)*3.2);
     }
 
     @Test
@@ -900,13 +1002,188 @@ public class TestQuery {
     }
 
     @Test
-    public void testMathOperators() {
+    public void testMathWholeNumberOperators() {
         final Map<String, String> attributes = new HashMap<>();
         attributes.put("abc", "1234");
         attributes.put("xyz", "4132");
         attributes.put("hello", "world!");
 
         verifyEquals("${xyz:toNumber():gt( ${abc:toNumber()} )}", attributes, true);
+    }
+
+    @Test
+    public void testMathDecimalOperators() {
+        final Map<String, String> attributes = new HashMap<>();
+        attributes.put("one", "1.1");
+        attributes.put("two", "2.2");
+        attributes.put("one_2", "1.1");
+
+        verifyEquals("${one:lt(${two})}", attributes, true);
+        verifyEquals("${one:lt(${one_2})}", attributes, false);
+        verifyEquals("${two:lt(${one})}", attributes, false);
+
+        verifyEquals("${one:le(${two})}", attributes, true);
+        verifyEquals("${one:le(${one_2})}", attributes, true);
+        verifyEquals("${two:le(${one_2})}", attributes, false);
+
+        verifyEquals("${one:ge(${two})}", attributes, false);
+        verifyEquals("${one:ge(${one_2})}", attributes, true);
+        verifyEquals("${two:ge(${one_2})}", attributes, true);
+
+        verifyEquals("${one:gt(${two})}", attributes, false);
+        verifyEquals("${one:gt(${one_2})}", attributes, false);
+        verifyEquals("${two:gt(${one})}", attributes, true);
+    }
+
+    @Test
+    public void testMathNumberDecimalConversion() {
+        final Map<String, String> attributes = new HashMap<>();
+        attributes.put("xyz", "1.332");
+        attributes.put("hello", "world!");
+
+        verifyEquals("${xyz:toNumber()}", attributes, 1L);
+
+        attributes.put("xyz", "2");
+        attributes.put("hello", "world!");
+
+        verifyEquals("${xyz:toDecimal()}", attributes, 2D);
+    }
+
+    @Test
+    public void testLiteral() {
+        final Map<String, String> attributes = new HashMap<>();
+
+        verifyEquals("${literal(5)}", attributes, "5");
+
+        verifyEquals("${literal(\"5\")}", attributes, "5");
+
+        verifyEquals("${literal(5):toNumber()}", attributes, 5L);
+        verifyEquals("${literal(5):toDecimal()}", attributes, 5D);
+
+        verifyEquals("${literal(\"5.5\")}", attributes, "5.5");
+
+        verifyEquals("${literal(5.5):toNumber()}", attributes, 5L);
+        verifyEquals("${literal(-5.5):toNumber()}", attributes, -5L);
+        verifyEquals("${literal(+5.5):toNumber()}", attributes, 5L);
+
+        verifyEquals("${literal(5.5):toDecimal()}", attributes, 5.5D);
+        verifyEquals("${literal(-5.5):toDecimal()}", attributes, -5.5D);
+        verifyEquals("${literal(+5.5):toDecimal()}", attributes, 5.5D);
+
+        verifyEquals("${literal('0xF.Fp10'):toDecimal()}", attributes, 0xF.Fp10D);
+
+        verifyEquals("${literal('0x1234567890ABCDEF'):toNumber()}", attributes, 0x1234567890ABCDEFL);
+        verifyEquals("${literal('-0x1234567890ABCDEF'):toNumber()}", attributes, -0x1234567890ABCDEFL);
+
+        verifyEquals("${literal('-0x1234567890abcdef'):toNumber()}", attributes, -0x1234567890abcdefL);
+        verifyEquals("${literal('0x1234567890abcdef'):toNumber()}", attributes, 0x1234567890abcdefL);
+    }
+
+    @Test
+    public void testDecimalParsing() {
+        final Map<String, String> attributes = new HashMap<>();
+
+        // Test decimal format X.X
+        verifyEquals("${literal(5.5):toDecimal()}", attributes, 5.5D);
+        verifyEquals("${literal(-12.5):toDecimal()}", attributes, -12.5D);
+        verifyEquals("${literal(+12.5):toDecimal()}", attributes, 12.5D);
+
+        // Test decimal format X.XEX with positive exponent
+        verifyEquals("${literal(-12.5E2):toDecimal()}", attributes, -12.5E2D);
+        verifyEquals("${literal(-12.5e2):toDecimal()}", attributes, -12.5e2D);
+        verifyEquals("${literal(-12.5e+2):toDecimal()}", attributes, -12.5e+2D);
+        verifyEquals("${literal(12.5E+2):toDecimal()}", attributes, 12.5E+2D);
+        verifyEquals("${literal(+12.5e+2):toDecimal()}", attributes, +12.5e+2D);
+        verifyEquals("${literal(+12.5E2):toDecimal()}", attributes, +12.5E2D);
+        verifyEquals("${literal(-12.5e2):toDecimal()}", attributes, -12.5e2D);
+        verifyEquals("${literal(12.5E2):toDecimal()}", attributes, 12.5E2D);
+        verifyEquals("${literal(+12.5e2):toDecimal()}", attributes, +12.5e2D);
+
+        // Test decimal format X.XEX with negative exponent
+        verifyEquals("${literal(-12.5E-2):toDecimal()}", attributes, -12.5E-2D);
+        verifyEquals("${literal(12.5E-2):toDecimal()}", attributes, 12.5E-2D);
+        verifyEquals("${literal(+12.5e-2):toDecimal()}", attributes, +12.5e-2D);
+
+        // Test decimal format .X
+        verifyEquals("${literal(.5):toDecimal()}", attributes, .5D);
+        verifyEquals("${literal(.5):toDecimal()}", attributes, .5D);
+        verifyEquals("${literal(-.5):toDecimal()}", attributes, -0.5D);
+        verifyEquals("${literal(+.5):toDecimal()}", attributes, .5D);
+
+        // Test decimal format .XEX with positive exponent
+        verifyEquals("${literal(-.5E2):toDecimal()}", attributes, -.5E2D);
+        verifyEquals("${literal(-.5E2):toDecimal()}", attributes, -.5E2D);
+        verifyEquals("${literal(-.5e+2):toDecimal()}", attributes, -.5e+2D);
+        verifyEquals("${literal(.5E+2):toDecimal()}", attributes, .5E+2D);
+        verifyEquals("${literal(+.5e+2):toDecimal()}", attributes, +.5e+2D);
+        verifyEquals("${literal(+.5E2):toDecimal()}", attributes, +.5E2D);
+        verifyEquals("${literal(-.5e2):toDecimal()}", attributes, -.5e2D);
+        verifyEquals("${literal(.5E2):toDecimal()}", attributes, .5E2D);
+        verifyEquals("${literal(+.5e2):toDecimal()}", attributes, +.5e2D);
+
+        // Test decimal format .XEX with negative exponent
+        verifyEquals("${literal(-.5E-2):toDecimal()}", attributes, -.5E-2D);
+        verifyEquals("${literal(.5e-2):toDecimal()}", attributes, .5e-2D);
+        verifyEquals("${literal(+.5E-2):toDecimal()}", attributes, +.5E-2D);
+
+        // Verify allowed values
+        verifyEquals("${literal(9876543210.0123456789e123):toDecimal()}", attributes, 9876543210.0123456789e123D);
+
+        verifyEmpty("${literal('A.1e123'):toDecimal()}", attributes);
+        verifyEmpty("${literal('0.Ae123'):toDecimal()}", attributes);
+        verifyEmpty("${literal('0.1eA'):toDecimal()}", attributes);
+
+        // --------- Hex format ------//
+
+        // Test Hex format X.
+        verifyEquals("${literal('0xF1.p2'):toDecimal()}", attributes, 0xF1.p2D);
+        verifyEquals("${literal('+0xF1.P2'):toDecimal()}", attributes, +0xF1.p2D);
+        verifyEquals("${literal('-0xF1.p2'):toDecimal()}", attributes, -0xF1.p2D);
+
+        // Test Hex format X.XEX with positive exponent
+        verifyEquals("${literal('-0xF1.5Bp2'):toDecimal()}", attributes, -0xF1.5Bp2D);
+        verifyEquals("${literal('-0xF1.5BP2'):toDecimal()}", attributes, -0xF1.5BP2D);
+        verifyEquals("${literal('-0xF1.5BP+2'):toDecimal()}", attributes, -0xF1.5Bp+2D);
+        verifyEquals("${literal('0xF1.5BP+2'):toDecimal()}", attributes, 0xF1.5BP+2D);
+        verifyEquals("${literal('+0xF1.5Bp+2'):toDecimal()}", attributes, +0xF1.5Bp+2D);
+        verifyEquals("${literal('+0xF1.5BP2'):toDecimal()}", attributes, +0xF1.5BP2D);
+        verifyEquals("${literal('-0xF1.5Bp2'):toDecimal()}", attributes, -0xF1.5Bp2D);
+        verifyEquals("${literal('0xF1.5BP2'):toDecimal()}", attributes, 0xF1.5BP2D);
+        verifyEquals("${literal('+0xF1.5Bp2'):toDecimal()}", attributes, +0xF1.5Bp2D);
+
+        // Test decimal format X.XEX with negative exponent
+        verifyEquals("${literal('-0xF1.5BP-2'):toDecimal()}", attributes, -0xF1.5BP-2D);
+        verifyEquals("${literal('0xF1.5BP-2'):toDecimal()}", attributes, 0xF1.5BP-2D);
+        verifyEquals("${literal('+0xF1.5Bp-2'):toDecimal()}", attributes, +0xF1.5Bp-2D);
+
+        // Test decimal format .XEX with positive exponent
+        verifyEquals("${literal('0x.5BP0'):toDecimal()}", attributes, 0x.5BP0D);
+        verifyEquals("${literal('-0x.5BP0'):toDecimal()}", attributes, -0x.5BP0D);
+        verifyEquals("${literal('-0x.5BP+2'):toDecimal()}", attributes, -0x.5BP+2D);
+        verifyEquals("${literal('0x.5BP+2'):toDecimal()}", attributes, 0x.5BP+2D);
+        verifyEquals("${literal('+0x.5Bp+2'):toDecimal()}", attributes, +0x.5Bp+2D);
+        verifyEquals("${literal('+0x.5BP2'):toDecimal()}", attributes, +0x.5BP2D);
+        verifyEquals("${literal('-0x.5Bp2'):toDecimal()}", attributes, -0x.5Bp2D);
+        verifyEquals("${literal('0x.5BP2'):toDecimal()}", attributes, 0x.5BP2D);
+        verifyEquals("${literal('+0x.5Bp+2'):toDecimal()}", attributes, +0x.5Bp2D);
+
+        // Test decimal format .XEX with negative exponent
+        verifyEquals("${literal('-0x.5BP-2'):toDecimal()}", attributes, -0x.5BP-2D);
+        verifyEquals("${literal('0x.5Bp-2'):toDecimal()}", attributes, 0x.5Bp-2D);
+        verifyEquals("${literal('+0x.5BP-2'):toDecimal()}", attributes, +0x.5BP-2D);
+
+        // Verify allowed values
+        verifyEquals("${literal('0xFEDCBA9876543210.0123456789ABCDEFp123'):toDecimal()}", attributes, 0xFEDCBA9876543210.0123456789ABCDEFp123D);
+        verifyEquals("${literal('0xfedcba9876543210.0123456789abcdefp123'):toDecimal()}", attributes, 0xfedcba9876543210.0123456789abcdefp123D);
+        verifyEmpty("${literal('0xG.1p123'):toDecimal()}", attributes);
+        verifyEmpty("${literal('0x1.Gp123'):toDecimal()}", attributes);
+        verifyEmpty("${literal('0x1.1pA'):toDecimal()}", attributes);
+        verifyEmpty("${literal('0x1.1'):toDecimal()}", attributes);
+
+        // Special cases
+        verifyEquals("${literal('" + Double.toString(POSITIVE_INFINITY) + "'):toDecimal():plus(1):plus(2)}", attributes, POSITIVE_INFINITY);
+        verifyEquals("${literal('" + Double.toString(NEGATIVE_INFINITY) + "'):toDecimal():plus(1):plus(2)}", attributes, NEGATIVE_INFINITY);
+        verifyEquals("${literal('" + Double.toString(NaN) + "'):toDecimal():plus(1):plus(2)}", attributes, NaN);
     }
 
     @Test
@@ -1021,6 +1298,16 @@ public class TestQuery {
     }
 
     @Test
+    public void testFromRadix() {
+        final Map<String, String> attributes = new HashMap<>();
+        attributes.put("test1", "ABCDEF");
+        attributes.put("test2", "123");
+
+        verifyEquals("${test1:fromRadix(16)}", attributes, 0xABCDEFL);
+        verifyEquals("${test2:fromRadix(4)}", attributes, 27L);
+    }
+
+    @Test
     public void testBase64Encode(){
         final Map<String, String> attributes = new HashMap<>();
         attributes.put("userpass", "admin:admin");
@@ -1041,6 +1328,15 @@ public class TestQuery {
         final Map<String, String> attributes = new HashMap<>();
         attributes.put("blue", "20130917162643");
         verifyEquals("${blue:toDate('yyyyMMddHHmmss'):format(\"yyyy/MM/dd HH:mm:ss.SSS'Z'\")}", attributes, "2013/09/17 16:26:43.000Z");
+    }
+
+    @Test
+    public void testDateFormatConversionWithTimeZone() {
+        final Map<String, String> attributes = new HashMap<>();
+        attributes.put("blue", "20130917162643");
+        verifyEquals("${blue:toDate('yyyyMMddHHmmss', 'GMT'):format(\"yyyy/MM/dd HH:mm:ss.SSS'Z'\", 'GMT')}", attributes, "2013/09/17 16:26:43.000Z");
+        verifyEquals("${blue:toDate('yyyyMMddHHmmss', 'GMT'):format(\"yyyy/MM/dd HH:mm:ss.SSS'Z'\", 'Europe/Paris')}", attributes, "2013/09/17 18:26:43.000Z");
+        verifyEquals("${blue:toDate('yyyyMMddHHmmss', 'GMT'):format(\"yyyy/MM/dd HH:mm:ss.SSS'Z'\", 'America/Los_Angeles')}", attributes, "2013/09/17 09:26:43.000Z");
     }
 
     @Test
@@ -1170,12 +1466,12 @@ public class TestQuery {
 
     @Test
     public void testToNumberFunctionReturnsNumberType() {
-        assertEquals(ResultType.NUMBER, Query.getResultType("${header.size:toNumber()}"));
+        assertEquals(ResultType.WHOLE_NUMBER, Query.getResultType("${header.size:toNumber()}"));
     }
 
     @Test
     public void testRandomFunctionReturnsNumberType() {
-        assertEquals(ResultType.NUMBER, Query.getResultType("${random()}"));
+        assertEquals(ResultType.WHOLE_NUMBER, Query.getResultType("${random()}"));
     }
 
     @Test
@@ -1199,6 +1495,32 @@ public class TestQuery {
         assertEquals(1, expressions.size());
         assertEquals("${abc}", expressions.get(0));
         assertEquals("{ xyz }", Query.evaluateExpressions(query, attributes));
+    }
+
+    @Test
+    public void testGetStateValue() {
+        final Map<String, String> stateValues = new HashMap<>();
+        stateValues.put("abc", "xyz");
+        stateValues.put("123", "qwe");
+        stateValues.put("true", "asd");
+        stateValues.put("iop", "098");
+
+        final Map<String, String> attributes = new HashMap<>();
+        attributes.put("abc", "iop");
+        attributes.put("4321", "123");
+        attributes.put("false", "bnm");
+
+        String query = "${getStateValue('abc')}";
+        verifyEquals(query, attributes, stateValues, "xyz");
+
+        query = "${getStateValue(${'4321':toString()})}";
+        verifyEquals(query, attributes, stateValues, "qwe");
+
+        query = "${getStateValue(${literal(true):toString()})}";
+        verifyEquals(query, attributes, stateValues, "asd");
+
+        query = "${getStateValue(${abc}):equals('098')}";
+        verifyEquals(query, attributes, stateValues, true);
     }
 
     @Test
@@ -1370,15 +1692,48 @@ public class TestQuery {
           verifyEquals("${string:unescapeHtml4()}", attributes, "special ♣");
         }
 
+    @Test
+    public void testIfElse() {
+        final Map<String, String> attributes = new HashMap<>();
+        verifyEquals("${attr:isNull():ifElse('a', 'b')}", attributes, "a");
+        verifyEquals("${attr:ifElse('a', 'b')}", attributes, "b");
+        attributes.put("attr", "hello");
+        verifyEquals("${attr:isNull():ifElse('a', 'b')}", attributes, "b");
+        verifyEquals("${attr:ifElse('a', 'b')}", attributes, "b");
+        attributes.put("attr", "true");
+        verifyEquals("${attr:ifElse('a', 'b')}", attributes, "a");
+
+        verifyEquals("${attr2:isNull():ifElse('a', 'b')}", attributes, "a");
+        verifyEquals("${literal(true):ifElse('a', 'b')}", attributes, "a");
+        verifyEquals("${literal(true):ifElse(false, 'b')}", attributes, "false");
+
+    }
+
     private void verifyEquals(final String expression, final Map<String, String> attributes, final Object expectedResult) {
+        verifyEquals(expression,attributes, null, expectedResult);
+    }
+
+    private void verifyEquals(final String expression, final Map<String, String> attributes, final Map<String, String> stateValues, final Object expectedResult) {
         Query.validateExpression(expression, false);
-        assertEquals(String.valueOf(expectedResult), Query.evaluateExpressions(expression, attributes, null));
+        assertEquals(String.valueOf(expectedResult), Query.evaluateExpressions(expression, attributes, null, stateValues));
 
         final Query query = Query.compile(expression);
-        final QueryResult<?> result = query.evaluate(attributes);
+        final QueryResult<?> result = query.evaluate(attributes, stateValues);
 
-        if (expectedResult instanceof Number) {
-            assertEquals(ResultType.NUMBER, result.getResultType());
+        if (expectedResult instanceof Long) {
+            if (ResultType.NUMBER.equals(result.getResultType())) {
+                final Number resultNumber = ((NumberQueryResult) result).getValue();
+                assertTrue(resultNumber instanceof Long);
+            } else {
+                assertEquals(ResultType.WHOLE_NUMBER, result.getResultType());
+            }
+        } else if(expectedResult instanceof Double) {
+            if (ResultType.NUMBER.equals(result.getResultType())) {
+                final Number resultNumber = ((NumberQueryResult) result).getValue();
+                assertTrue(resultNumber instanceof Double);
+            } else {
+                assertEquals(ResultType.DECIMAL, result.getResultType());
+            }
         } else if (expectedResult instanceof Boolean) {
             assertEquals(ResultType.BOOLEAN, result.getResultType());
         } else {
@@ -1386,6 +1741,11 @@ public class TestQuery {
         }
 
         assertEquals(expectedResult, result.getValue());
+    }
+
+    private void verifyEmpty(final String expression, final Map<String, String> attributes) {
+        Query.validateExpression(expression, false);
+        assertEquals(String.valueOf(""), Query.evaluateExpressions(expression, attributes, null));
     }
 
     private String getResourceAsString(String resourceName) throws IOException {
